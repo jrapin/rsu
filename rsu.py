@@ -142,11 +142,13 @@ class TaxSummary:
 
     # Social contributions on the corrected acquisition gain
     social_contributions_on_vest_gain: float
-    # Tax on the on the corrected acquistion gain
+    # Income Tax on the on the corrected acquistion gain
     tax_on_vest_gain: float
-    # Tax on the corrected capital gain
+    # Social contributions on the corrected capital gain
+    social_contributions_on_capital_gain: float
+    # Income Tax on the corrected capital gain
     tax_on_capital_gain: float
-    # Total tax to be paid
+    # Total tax to be paid (income tax and social contributions)
     total_tax: float
     # Average tax rate over all transactions
     total_tax_rate: float
@@ -382,11 +384,14 @@ def generate_summary(trs: TransactionDetailsProcessed, mtr: float) -> TaxSummary
     social_contributions_on_vest_gain = 17.2 / 100 * total_corrected_vest_gain_eur
     tax_on_vest_gain = mtr * (total_corrected_vest_gain_eur - total_tax_relief_eur)
 
-    # Tax on capital gain, it's the 30% flat tax
-    tax_on_capital_gain = 30 / 100 * total_corrected_capital_gain_eur
+    # Tax on capital gain, it's the 30% flat tax.
+    # 17.2% of social contributions and 12.8% of income tax
+    # Track social contributions and income tax separately, as this information may be useful if you have to pay the "CDHR"
+    social_contributions_on_capital_gain = 17.2 / 100 * total_corrected_capital_gain_eur
+    tax_on_capital_gain = 12.8 / 100 * total_corrected_capital_gain_eur
 
     total_taxes = (
-        social_contributions_on_vest_gain + tax_on_vest_gain + tax_on_capital_gain
+        social_contributions_on_vest_gain + tax_on_vest_gain + social_contributions_on_capital_gain + tax_on_capital_gain
     )
     total_tax_rate = total_taxes / total_sale_price_eur
 
@@ -399,6 +404,7 @@ def generate_summary(trs: TransactionDetailsProcessed, mtr: float) -> TaxSummary
         total_corrected_capital_gain_eur=total_corrected_capital_gain_eur,
         social_contributions_on_vest_gain=social_contributions_on_vest_gain,
         tax_on_vest_gain=tax_on_vest_gain,
+        social_contributions_on_capital_gain=social_contributions_on_capital_gain,
         tax_on_capital_gain=tax_on_capital_gain,
         total_tax=total_taxes,
         total_tax_rate=total_tax_rate,
@@ -439,15 +445,19 @@ def write_output_csv(trs: List[TransactionDetailsProcessed], csv_filename: Path)
 def write_tax_estimate(summary: TaxSummary, txt_filename: Path):
     s = f"""
     Montant total de la vente: {summary.total_sale_price_eur:.2f} EUR
-    Montant total des impots: {summary.total_tax:.2f} EUR
-    Taux d'imposition moyen: {summary.total_tax_rate*100:.2f}%
+    Montant total des charges: {summary.total_tax:.2f} EUR
+    Taux moyen des charges: {summary.total_tax_rate*100:.2f}%
+    Taux moyen d'imposition sur le revenu: {(summary.tax_on_vest_gain + summary.tax_on_capital_gain)*100 / summary.total_sale_price_eur:.2f}%
     
     Details:
     - Gain d'acquisition total: {summary.total_corrected_vest_gain_eur:.2f} EUR
-        - Contributions sociales sur le gain d'acquisition: {summary.social_contributions_on_vest_gain:.2f} EUR
+        - Cotisations sociales sur le gain d'acquisition: {summary.social_contributions_on_vest_gain:.2f} EUR
         - Impots sur le gain d'acquisition: {summary.tax_on_vest_gain:.2f} EUR
+        - Total des charges sur le gain d'acquisition: {summary.social_contributions_on_vest_gain + summary.tax_on_vest_gain:.2f} EUR
     - Plus-value de cession total: {summary.total_corrected_capital_gain_eur:.2f} EUR
-        - Impots sur la plus-value de cession: {summary.tax_on_capital_gain:.2f} EUR
+       - Cotisations sociales sur la plus-value de cession: {summary.social_contributions_on_capital_gain:.2f} EUR
+       - Impots sur la plus-value de cession: {summary.tax_on_capital_gain:.2f} EUR
+       - Total des charges sur la plus-value de cession: {summary.social_contributions_on_capital_gain + summary.tax_on_capital_gain:.2f} EUR
     """
     with open(txt_filename, "w") as f:
         f.write(s)
@@ -471,7 +481,7 @@ def write_instructions(
     trs_to_declare.sort(key=lambda x: (x.sale_date, x.vest_date))
 
     if not trs_to_declare:
-        s += f"""
+        s += """
         Aucune transaction n'a de plus-value de cession a declarer.
         Vous n'avez pas besoin de remplir le formulaire 2074, ni le formulaire 2047.
         """
@@ -504,7 +514,7 @@ def write_instructions(
         -------------------------------------------------------------------
         """
 
-    s += f"""
+    s += """
         Notez la plus value totale obtenue.
     
         1133: Titre A / Colonne A : Recopiez la valeur obtenue, pour qu'elle soit reportee en case 3VG.
@@ -520,7 +530,6 @@ def write_instructions(
         f.write(s)
 
 
-from typing import Optional
 
 
 @click.command()
