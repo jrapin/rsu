@@ -43,7 +43,7 @@ class ExchangeRateData:
         df_usd = df_usd.iloc[5:]
         # The column contains the exchange rate as a string of format "1,2345"
         # and "-" during the week-ends. We replace the "-" with the last known value.
-        df_usd[usd_column] = df_usd[usd_column].replace("-", method="bfill")
+        df_usd[usd_column] = df_usd[usd_column].replace("-", None).bfill()
         df_usd[usd_column] = df_usd[usd_column].str.replace(",", ".").astype(float)
 
         for _, row in df_usd.iterrows():
