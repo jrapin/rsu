@@ -75,7 +75,9 @@ def process(schwab_json: Path) -> None:
     out = []
     for d in dividends:
         out.append(d.process(xrate=xrate))
-    print("\n\n".join(out))
+    summ = "\n\n".join(out)
+    schwab_json.with_name("summary-dividendes.txt").write_text(summ)
+    print(summ)
 
 
 if __name__ == "__main__":
