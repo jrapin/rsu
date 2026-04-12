@@ -355,8 +355,38 @@ def process_all_transactions(transactions: list, change_data: ExchangeRateData) 
     """
     return [process_transaction(tr, change_data) for tr in transactions]
 
+@dataclass
+class TaxRates:
+    # Marginal tax rate for income tax on acquisition gains
+    marginal_tax_rate: float
+    # Social contributions rate (typically 17.2%)
+    social_contributions_rate: float
+    # Income tax rate for capital gains (typically 12.8%)
+    capital_gains_tax_rate: float
+        
+def get_tax_rates(year: int, mtr: float) -> TaxRates:
+    # Before 2018, the tax regime is different and more complex, with different tax rates depending on the amount of acquisition gain and capital gain,
+    # and also different social contributions rates.
+    # For simplicity, we only support the years after 2018, with a flat tax rate on capital gains
+    if year < 2018:
+        raise ValueError("Only the year >=2018 is supported for now")
+    elif year < 2025:
+        # Before 2025, social contributions are at 17.2%, and income tax on capital gains is at 12.8% (so 30% flat tax rate on capital gains)
+        return TaxRates(
+            marginal_tax_rate=mtr,
+            social_contributions_rate=0.172,
+            capital_gains_tax_rate=0.128,
+        )
+    else:
+        # Since 2025, social contributions are at 18.6%, and income tax on capital gains is still at 12.8% (so 31.4% flat tax rate on capital gains)
+        return TaxRates(
+            marginal_tax_rate=mtr,
+            social_contributions_rate=0.186,
+            capital_gains_tax_rate=0.128,
+        )
+        
 
-def generate_summary(trs: TransactionDetailsProcessed, mtr: float) -> TaxSummary:
+def generate_summary(trs: TransactionDetailsProcessed, rates: TaxRates) -> TaxSummary:
     """
     Summarize the processed transactions.
 
@@ -379,16 +409,17 @@ def generate_summary(trs: TransactionDetailsProcessed, mtr: float) -> TaxSummary
     # Compute taxes
     # Taxes on acquisition gain
     # We are in the Macron 1 regime, we don't need to distinguish between above or below 300K for the acquisition gain.
-    # it's 17.2% of social contribution on the full acquisition gain
-    # and MTR (Marginal tax Rate) on the acquistion gain minus the tax relief
-    social_contributions_on_vest_gain = 17.2 / 100 * total_corrected_vest_gain_eur
-    tax_on_vest_gain = mtr * (total_corrected_vest_gain_eur - total_tax_relief_eur)
+    # Social contributions are computed on the full acquisition gain (17.2% before 2025, then 18.6% since 2025).
+    # Income tax is computed on the acquistion gain minus the tax relief (using the marginal tax rate, which depends on your total income)
+    social_contributions_on_vest_gain = rates.social_contributions_rate * total_corrected_vest_gain_eur
+    tax_on_vest_gain = rates.marginal_tax_rate * (total_corrected_vest_gain_eur - total_tax_relief_eur)
 
-    # Tax on capital gain, it's the 30% flat tax.
-    # 17.2% of social contributions and 12.8% of income tax
-    # Track social contributions and income tax separately, as this information may be useful if you have to pay the "CDHR"
-    social_contributions_on_capital_gain = 17.2 / 100 * total_corrected_capital_gain_eur
-    tax_on_capital_gain = 12.8 / 100 * total_corrected_capital_gain_eur
+    # Tax on capital gain
+    # it's a flat tax rate
+    # 12.8% of income tax and social contributions (17.2% before 2025, then 18.6% since 2025)
+    # Store social contributions and income tax separately, as this information may be useful if you have to pay the "CDHR"
+    social_contributions_on_capital_gain = rates.social_contributions_rate * total_corrected_capital_gain_eur
+    tax_on_capital_gain = rates.capital_gains_tax_rate * total_corrected_capital_gain_eur
 
     total_taxes = (
         social_contributions_on_vest_gain + tax_on_vest_gain + social_contributions_on_capital_gain + tax_on_capital_gain
@@ -442,7 +473,7 @@ def write_output_csv(trs: List[TransactionDetailsProcessed], csv_filename: Path)
     df.to_csv(csv_filename, sep="\t", float_format="%.4f", decimal=",")
 
 
-def write_tax_estimate(summary: TaxSummary, txt_filename: Path):
+def write_tax_estimate(summary: TaxSummary, rates: TaxRates, txt_filename: Path):
     s = f"""
     Montant total de la vente: {summary.total_sale_price_eur:.2f} EUR
     Montant total des charges: {summary.total_tax:.2f} EUR
@@ -450,6 +481,9 @@ def write_tax_estimate(summary: TaxSummary, txt_filename: Path):
     Taux moyen d'imposition sur le revenu: {(summary.tax_on_vest_gain + summary.tax_on_capital_gain)*100 / summary.total_sale_price_eur:.2f}%
     
     Details:
+    - Taux marginal d'imposition sur le revenu: {rates.marginal_tax_rate*100:.2f}%
+    - Taux de cotisations sociales: {rates.social_contributions_rate*100:.2f}%
+    - Taux d'imposition sur les plus-values de cession: {rates.capital_gains_tax_rate*100:.2f}%
     - Gain d'acquisition total: {summary.total_corrected_vest_gain_eur:.2f} EUR
         - Cotisations sociales sur le gain d'acquisition: {summary.social_contributions_on_vest_gain:.2f} EUR
         - Impots sur le gain d'acquisition: {summary.tax_on_vest_gain:.2f} EUR
@@ -563,11 +597,12 @@ def main(
     transactions = load_transactions_details(schwab_json, year)
     transactions = group_transactions(transactions)
     processed = process_all_transactions(transactions, xr_data)
-    summary = generate_summary(processed, mtr)
+    tax_rates: TaxRates = get_tax_rates(year, mtr)
+    summary = generate_summary(processed, tax_rates)
 
     output_dir.mkdir(exist_ok=True, parents=True)
     write_output_csv(processed, output_dir / f"rsu_{year}.csv")
-    write_tax_estimate(summary, output_dir / f"rsu_tax_estimate_{year}")
+    write_tax_estimate(summary, tax_rates, output_dir / f"rsu_tax_estimate_{year}")
     write_instructions(summary, processed, output_dir / f"rsu_tax_instructions_{year}")
 
 
