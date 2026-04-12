@@ -24,7 +24,7 @@ You need to download your data from the Schwab website.
 - Click on Search (to actually use the date range)
 - Click Export (top left) and choose the JSON format
 
-Then, run the script, by providing the path to the Schwab data, the year to declare and a directory to write the results
+Then, run the script `rsu.py`, by providing the path to the Schwab data, the year to declare and a directory to write the results
 ```bash
 python rsu.py --schwab_json=EquityAwardsCenter_Transactions_20240208190934.json --year=2023 --output_dir=.
 ```
@@ -49,3 +49,17 @@ Known bugs:
 - If for a line, the capital loss is superior to the acquisition gain, the remaining capital loss (after cancelling the acquisition gain) will not be subtracted from the acquisition gain on other lines (I don't know if it's possible). And it won't be declared in the form 2074 neither.
 - There might be a small discrepancy between what is computed in your tax declaration in case 3VG after filling the form 2074, and the value returned by the tool: this is due to the rounded values that are put in the form 2074, while the script computes the exact value.
 - Similarly, you may see some rounding errors when filling the form 2074, because I computed exact values, while the tax form has a limited precision for the inputs.
+
+
+## Dividends
+
+Usage is the same as for RSUs:
+- Download your data from Schwab (you can use the same file you downloaded for RSUs)
+- Run the script
+
+```bash
+python dividends.py --schwab_json=EquityAwardsCenter_Transactions_20260409125422.json --year=2026 --output_dir=.
+```
+
+- You'll find a csv file in the output directory, which contains all the value needed to fill the form 2778-DIV-SD.
+

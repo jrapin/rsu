@@ -23,7 +23,7 @@ class TaxRates:
     impots_usa: float
     # Income tax rate in EUR (12.8% of base EUR)
     impots_revenu: float
-    # CSG rate (9.2% of base EUR before 2025, then 10.6% since 2025)
+    # CSG rate (9.2% of base EUR before 2026, then 10.6% since 2026)
     CSG: float
     # CRDS rate (0.5% of base EUR)
     CRDS: float
